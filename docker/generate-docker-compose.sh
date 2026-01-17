@@ -79,8 +79,6 @@ EOF
 
 # Generate Docker Compose file
 cat > "$OUTPUT_DIR/docker-compose.yml" <<EOF
-version: "3.8"
-
 networks:
   vpnnet:
     driver: bridge
@@ -118,6 +116,7 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_ADMIN
+    command: ["x-ui"]
 
   nginx:
     image: nginx:1.25-alpine

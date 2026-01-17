@@ -204,23 +204,88 @@ msg_ok "Конфигурация сгенерирована"
 
 # Сборка образов
 msg_step "Сборка Docker образов (это может занять несколько минут)..."
-if ! $DOCKER_COMPOSE build; then
-    msg_err "Ошибка при сборке образов"
+msg_inf "Это может занять 1-2 минуты, пожалуйста, подождите..."
+
+# Запускаем сборку с выводом в реальном времени, но проверяем код выхода
+if $DOCKER_COMPOSE build 2>&1 | tee /tmp/docker-build.log; then
+    BUILD_EXIT=0
+else
+    BUILD_EXIT=$?
+fi
+
+# Проверяем код выхода
+if [ $BUILD_EXIT -ne 0 ]; then
+    msg_err "Ошибка при сборке образов (код выхода: $BUILD_EXIT)"
+    msg_inf "Последние строки лога сборки:"
+    tail -n 30 /tmp/docker-build.log 2>/dev/null || true
     exit 1
 fi
+
+# Проверяем, что сборка действительно завершилась успешно
+if grep -qE "error|Error|ERROR|failed|Failed|FAILED" /tmp/docker-build.log 2>/dev/null; then
+    msg_err "Обнаружены ошибки при сборке образов"
+    grep -iE "error|failed" /tmp/docker-build.log | tail -n 10
+    exit 1
+fi
+
 msg_ok "Образы собраны"
+rm -f /tmp/docker-build.log
+
+# Останавливаем и удаляем существующие контейнеры, если они есть
+msg_step "Проверка существующих контейнеров..."
+if docker ps -a --format '{{.Names}}' | grep -qE '^(xui-pro|nginx|certbot)$'; then
+    msg_inf "Обнаружены существующие контейнеры, останавливаем и удаляем..."
+    $DOCKER_COMPOSE down 2>/dev/null || true
+    # Также удаляем контейнеры по имени на случай, если они не в docker-compose
+    docker stop xui-pro nginx certbot 2>/dev/null || true
+    docker rm xui-pro nginx certbot 2>/dev/null || true
+    msg_ok "Старые контейнеры удалены"
+fi
 
 # Запуск контейнеров
 msg_step "Запуск контейнеров..."
-if ! $DOCKER_COMPOSE up -d; then
+msg_inf "Выполняется: $DOCKER_COMPOSE up -d"
+if ! $DOCKER_COMPOSE up -d 2>&1; then
     msg_err "Ошибка при запуске контейнеров"
+    msg_inf "Попробуйте запустить вручную:"
+    msg_inf "  cd $WORK_DIR"
+    msg_inf "  $DOCKER_COMPOSE down  # Удалить старые контейнеры"
+    msg_inf "  $DOCKER_COMPOSE up -d  # Запустить новые"
     exit 1
 fi
-msg_ok "Контейнеры запущены"
+msg_ok "Команда docker-compose up -d выполнена"
 
 # Ждем запуска
-msg_inf "Ожидание запуска контейнеров..."
+msg_inf "Ожидание запуска контейнеров (5 секунд)..."
 sleep 5
+
+# Проверяем статус контейнеров
+msg_step "Проверка статуса контейнеров..."
+msg_inf "Выполняется: $DOCKER_COMPOSE ps"
+CONTAINER_STATUS=$($DOCKER_COMPOSE ps 2>&1 || echo "")
+msg_inf "Результат проверки статуса:"
+echo "$CONTAINER_STATUS"
+
+if [ -z "$CONTAINER_STATUS" ] || ! echo "$CONTAINER_STATUS" | grep -q "xui-pro"; then
+    msg_err "Контейнер xui-pro не запущен!"
+    msg_inf "Статус контейнеров:"
+    $DOCKER_COMPOSE ps || docker ps -a | grep xui-pro || true
+    msg_inf ""
+    msg_inf "Логи контейнера xui-pro:"
+    $DOCKER_COMPOSE logs xui-pro 2>&1 | tail -n 50 || docker logs xui-pro 2>&1 | tail -n 50 || true
+    msg_inf ""
+    msg_inf "Попробуйте запустить вручную:"
+    msg_inf "  cd $WORK_DIR"
+    msg_inf "  $DOCKER_COMPOSE up -d"
+    msg_inf "  $DOCKER_COMPOSE logs -f xui-pro"
+    exit 1
+fi
+
+# Показываем статус всех контейнеров
+msg_inf "Статус контейнеров:"
+$DOCKER_COMPOSE ps
+
+msg_ok "Контейнеры запущены"
 
 # Получение сертификатов
 msg_step "Проверка SSL сертификатов..."
