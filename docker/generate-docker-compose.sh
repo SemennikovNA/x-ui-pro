@@ -87,7 +87,7 @@ networks:
 
 services:
   xui-pro:
-    build: ./xui-pro
+    build: ./docker/xui-pro
     container_name: xui-pro
     restart: unless-stopped
     networks: [vpnnet]
