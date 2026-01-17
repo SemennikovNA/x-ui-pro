@@ -142,12 +142,12 @@ server {
         break;
     }
     
-    include /etc/nginx/conf.d/includes.conf;
+    include /etc/nginx/snippets/includes.conf;
 }
 EOF
 
-# Generate includes.conf
-cat > "$OUTPUT_DIR/nginx/conf.d/includes.conf" <<EOF
+# Generate includes.conf в snippets директории
+cat > "$OUTPUT_DIR/nginx/snippets/includes.conf" <<EOF
 #sub2sing-box
 location /${sub2singbox_path}/ {
     proxy_redirect off;
@@ -322,7 +322,7 @@ server {
         break;
     }
     
-    include /etc/nginx/conf.d/includes.conf;
+    include /etc/nginx/snippets/includes.conf;
 }
 EOF
 

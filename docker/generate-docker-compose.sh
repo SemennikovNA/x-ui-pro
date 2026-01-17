@@ -36,7 +36,7 @@ msg_inf "Reality Domain: $REALITY_DOMAIN"
 msg_inf "Timezone: $TZ"
 
 # Create output directory structure
-mkdir -p "$OUTPUT_DIR"/{xui-pro,nginx/{conf.d,stream.d},scripts,data/{xui,letsencrypt,certbot-www,nginx-logs}}
+mkdir -p "$OUTPUT_DIR"/{xui-pro,nginx/{conf.d,stream.d,snippets},scripts,data/{xui,letsencrypt,certbot-www,nginx-logs}}
 
 # Generate random strings
 gen_random_string() {
@@ -130,6 +130,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/stream.d:/etc/nginx/stream.d:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
       - ./data/letsencrypt:/etc/letsencrypt:ro
       - ./data/certbot-www:/var/www/certbot:ro
       - ./data/nginx-logs:/var/log/nginx
