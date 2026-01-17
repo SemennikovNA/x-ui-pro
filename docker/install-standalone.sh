@@ -266,6 +266,23 @@ CONTAINER_STATUS=$($DOCKER_COMPOSE ps 2>&1 || echo "")
 msg_inf "Результат проверки статуса:"
 echo "$CONTAINER_STATUS"
 
+# Проверяем, не перезапускается ли nginx
+if echo "$CONTAINER_STATUS" | grep -q "Restarting"; then
+    msg_err "Nginx перезапускается! Проверьте конфигурацию nginx."
+    msg_inf "Логи nginx:"
+    $DOCKER_COMPOSE logs nginx 2>&1 | tail -n 50 || true
+    msg_inf ""
+    msg_inf "Проверка конфигурации nginx:"
+    $DOCKER_COMPOSE exec nginx nginx -t 2>&1 || docker exec nginx nginx -t 2>&1 || true
+    msg_inf ""
+    msg_inf "Возможные проблемы:"
+    msg_inf "  1. Отсутствуют SSL сертификаты (это нормально при первом запуске)"
+    msg_inf "  2. Неправильная конфигурация nginx"
+    msg_inf ""
+    msg_inf "Nginx может не запуститься без сертификатов. Это нормально."
+    msg_inf "Сертификаты будут получены на следующем шаге."
+fi
+
 if [ -z "$CONTAINER_STATUS" ] || ! echo "$CONTAINER_STATUS" | grep -q "xui-pro"; then
     msg_err "Контейнер xui-pro не запущен!"
     msg_inf "Статус контейнеров:"
@@ -292,35 +309,56 @@ msg_step "Проверка SSL сертификатов..."
 
 if [ ! -d "./data/letsencrypt/live/$DOMAIN" ]; then
     msg_inf "Сертификаты не найдены. Попытка получения..."
+    msg_inf "Сначала получаем сертификаты через standalone режим (nginx еще не запущен)..."
     
-    msg_inf "Ожидание готовности nginx..."
-    for i in {1..30}; do
-        if $DOCKER_COMPOSE ps nginx | grep -q "Up"; then
-            break
-        fi
-        sleep 2
-    done
+    # Получаем сертификаты через standalone режим (certbot сам слушает порты 80/443)
+    # Останавливаем nginx временно, если он запущен
+    $DOCKER_COMPOSE stop nginx 2>/dev/null || true
+    sleep 2
     
-    if $DOCKER_COMPOSE run --rm certbot certonly --webroot \
-        --webroot-path=/var/www/certbot \
+    if $DOCKER_COMPOSE run --rm --service-ports certbot certonly --standalone \
         --email "admin@${DOMAIN}" \
         --agree-tos \
         --no-eff-email \
         -d "$DOMAIN" \
         -d "$REALITY_DOMAIN" 2>&1 | tee /tmp/certbot-output.log; then
         msg_ok "Сертификаты получены"
-        $DOCKER_COMPOSE restart nginx
+        
+        # Теперь запускаем nginx с сертификатами
+        msg_inf "Запуск nginx с полученными сертификатами..."
+        $DOCKER_COMPOSE up -d nginx
+        sleep 3
+        
+        # Проверяем, что nginx запустился
+        if $DOCKER_COMPOSE ps nginx | grep -q "Up"; then
+            msg_ok "Nginx запущен с SSL сертификатами"
+        else
+            msg_err "Nginx не запустился после получения сертификатов"
+            msg_inf "Логи nginx:"
+            $DOCKER_COMPOSE logs nginx 2>&1 | tail -n 30 || true
+        fi
     else
         msg_err "Не удалось получить сертификаты автоматически"
         msg_inf "Вы можете получить их вручную:"
         echo "  cd $WORK_DIR"
-        echo "  $DOCKER_COMPOSE run --rm certbot certonly --webroot \\"
-        echo "    --webroot-path=/var/www/certbot \\"
+        echo "  docker-compose stop nginx"
+        echo "  docker-compose run --rm --service-ports certbot certonly --standalone \\"
         echo "    --email admin@${DOMAIN} \\"
         echo "    --agree-tos -d ${DOMAIN} -d ${REALITY_DOMAIN}"
+        echo "  docker-compose up -d nginx"
+        msg_inf ""
+        msg_inf "Примечание: nginx может не запуститься без сертификатов."
+        msg_inf "Получите сертификаты сначала, затем перезапустите nginx."
     fi
 else
     msg_ok "Сертификаты уже существуют"
+    
+    # Если nginx не запущен, запускаем его
+    if ! $DOCKER_COMPOSE ps nginx | grep -q "Up"; then
+        msg_inf "Запуск nginx с существующими сертификатами..."
+        $DOCKER_COMPOSE up -d nginx
+        sleep 3
+    fi
 fi
 
 # Вывод информации
