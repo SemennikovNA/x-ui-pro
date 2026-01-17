@@ -21,7 +21,7 @@ if [ -z "$1" ]; then
     echo "Использование: $0 <domain> [reality_domain] [timezone]"
     echo ""
     echo "Или запустите одной командой:"
-    echo "  curl -sSL https://raw.githubusercontent.com/your-repo/x-ui-pro/master/docker/install-standalone.sh | bash -s <domain> [reality_domain] [timezone]"
+    echo "  curl -sSL https://raw.githubusercontent.com/SemennikovNA/x-ui-pro/docker-compose/docker/install-standalone.sh | bash -s <domain> [reality_domain] [timezone]"
     exit 1
 fi
 
@@ -29,7 +29,8 @@ DOMAIN="$1"
 REALITY_DOMAIN="${2:-$DOMAIN}"
 TZ="${3:-Asia/Almaty}"
 WORK_DIR="$(pwd)/x-ui-pro-docker"
-REPO_URL="${XUI_PRO_REPO_URL:-https://github.com/legiz-ru/x-ui-pro}"
+REPO_URL="${XUI_PRO_REPO_URL:-https://github.com/SemennikovNA/x-ui-pro}"
+REPO_BRANCH="${XUI_PRO_REPO_BRANCH:-docker-compose}"
 
 # Проверка зависимостей
 msg_step "Проверка зависимостей..."
@@ -66,7 +67,7 @@ mkdir -p docker/{xui-pro/scripts,scripts}
 
 # Скачиваем Dockerfile
 msg_inf "Скачивание Dockerfile..."
-curl -sSL "${REPO_URL}/raw/master/docker/xui-pro/Dockerfile" -o docker/xui-pro/Dockerfile || {
+curl -sSL "${REPO_URL}/raw/${REPO_BRANCH}/docker/xui-pro/Dockerfile" -o docker/xui-pro/Dockerfile || {
     msg_err "Не удалось скачать Dockerfile. Проверьте доступность репозитория."
     exit 1
 }
@@ -74,7 +75,7 @@ curl -sSL "${REPO_URL}/raw/master/docker/xui-pro/Dockerfile" -o docker/xui-pro/D
 # Скачиваем скрипты для xui-pro
 for script in entrypoint.sh install-xui.sh init-xui.sh install-extras.sh; do
     msg_inf "Скачивание $script..."
-    curl -sSL "${REPO_URL}/raw/master/docker/xui-pro/scripts/${script}" -o "docker/xui-pro/scripts/${script}" || {
+    curl -sSL "${REPO_URL}/raw/${REPO_BRANCH}/docker/xui-pro/scripts/${script}" -o "docker/xui-pro/scripts/${script}" || {
         msg_err "Не удалось скачать ${script}"
         exit 1
     }
@@ -83,7 +84,7 @@ done
 
 # Скачиваем скрипты генерации
 msg_inf "Скачивание скриптов генерации..."
-curl -sSL "${REPO_URL}/raw/master/docker/scripts/generate-nginx-configs.sh" -o docker/scripts/generate-nginx-configs.sh || {
+curl -sSL "${REPO_URL}/raw/${REPO_BRANCH}/docker/scripts/generate-nginx-configs.sh" -o docker/scripts/generate-nginx-configs.sh || {
     msg_err "Не удалось скачать generate-nginx-configs.sh"
     exit 1
 }
@@ -91,10 +92,23 @@ chmod +x docker/scripts/generate-nginx-configs.sh
 
 # Скачиваем скрипт генерации docker-compose
 msg_inf "Скачивание generate-docker-compose.sh..."
-curl -sSL "${REPO_URL}/raw/master/docker/generate-docker-compose.sh" -o docker/generate-docker-compose.sh || {
+GEN_COMPOSE_URL="${REPO_URL}/raw/${REPO_BRANCH}/docker/generate-docker-compose.sh"
+msg_inf "URL: $GEN_COMPOSE_URL"
+if ! curl -sSL "$GEN_COMPOSE_URL" -o docker/generate-docker-compose.sh; then
     msg_err "Не удалось скачать generate-docker-compose.sh"
+    msg_inf "Проверьте доступность URL: $GEN_COMPOSE_URL"
     exit 1
-}
+fi
+
+# Проверяем, что файл действительно bash скрипт, а не HTML
+if ! head -n 1 docker/generate-docker-compose.sh | grep -q "#!/bin/bash"; then
+    msg_err "Скачанный файл не является bash скриптом. Возможно, неправильный путь в репозитории."
+    msg_inf "Первые строки скачанного файла:"
+    head -n 10 docker/generate-docker-compose.sh
+    msg_inf "Проверьте, что файл существует по пути: docker/generate-docker-compose.sh в ветке ${REPO_BRANCH}"
+    exit 1
+fi
+
 chmod +x docker/generate-docker-compose.sh
 
 msg_ok "Файлы скачаны"
@@ -103,7 +117,19 @@ msg_ok "Файлы скачаны"
 msg_step "Генерация Docker Compose конфигурации..."
 export OUTPUT_DIR="."
 export TZ
-if ! bash ./docker/generate-docker-compose.sh "$DOMAIN" "$REALITY_DOMAIN" "$TZ"; then
+
+# Проверяем наличие скрипта перед запуском
+if [ ! -f "docker/generate-docker-compose.sh" ]; then
+    msg_err "Файл docker/generate-docker-compose.sh не найден"
+    exit 1
+fi
+
+# Проверяем, что мы в правильной директории
+msg_inf "Текущая директория: $(pwd)"
+msg_inf "Содержимое docker/:"
+ls -la docker/ || true
+
+if ! bash docker/generate-docker-compose.sh "$DOMAIN" "$REALITY_DOMAIN" "$TZ"; then
     msg_err "Ошибка при генерации конфигурации"
     exit 1
 fi

@@ -7,12 +7,12 @@
 Не требует клонирования репозитория. Просто выполните:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/legiz-ru/x-ui-pro/master/docker/install-standalone.sh | bash -s <ваш-домен> [reality-домен] [timezone]
+curl -sSL https://raw.githubusercontent.com/SemennikovNA/x-ui-pro/docker-compose/docker/install-standalone.sh | bash -s <ваш-домен> [reality-домен] [timezone]
 ```
 
 Пример:
 ```bash
-curl -sSL https://raw.githubusercontent.com/legiz-ru/x-ui-pro/master/docker/install-standalone.sh | bash -s adm.duckondigitalwave.space reality.duckondigitalwave.space Asia/Almaty
+curl -sSL https://raw.githubusercontent.com/SemennikovNA/x-ui-pro/docker-compose/docker/install-standalone.sh | bash -s adm.duckondigitalwave.space reality.duckondigitalwave.space Asia/Almaty
 ```
 
 Скрипт автоматически:
@@ -28,7 +28,7 @@ curl -sSL https://raw.githubusercontent.com/legiz-ru/x-ui-pro/master/docker/inst
 Если вы уже клонировали репозиторий:
 
 ```bash
-git clone https://github.com/legiz-ru/x-ui-pro.git
+git clone -b docker-compose https://github.com/SemennikovNA/x-ui-pro.git
 cd x-ui-pro
 ./docker-install.sh <domain> [reality_domain] [timezone]
 ```

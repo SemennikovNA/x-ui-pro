@@ -153,7 +153,20 @@ EOF
 msg_ok "Docker Compose file generated: $OUTPUT_DIR/docker-compose.yml"
 
 # Generate nginx configs
-./docker/scripts/generate-nginx-configs.sh "$OUTPUT_DIR"
+# Определяем путь к скрипту генерации nginx конфигов
+NGINX_GEN_SCRIPT=""
+if [ -f "./docker/scripts/generate-nginx-configs.sh" ]; then
+    NGINX_GEN_SCRIPT="./docker/scripts/generate-nginx-configs.sh"
+elif [ -f "$(dirname "$0")/scripts/generate-nginx-configs.sh" ]; then
+    NGINX_GEN_SCRIPT="$(dirname "$0")/scripts/generate-nginx-configs.sh"
+elif [ -f "docker/scripts/generate-nginx-configs.sh" ]; then
+    NGINX_GEN_SCRIPT="docker/scripts/generate-nginx-configs.sh"
+else
+    msg_err "Не найден скрипт generate-nginx-configs.sh"
+    exit 1
+fi
+
+bash "$NGINX_GEN_SCRIPT" "$OUTPUT_DIR"
 
 msg_ok "Nginx configurations generated"
 

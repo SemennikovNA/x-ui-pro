@@ -26,12 +26,12 @@ docker/
 Просто выполните одну команду:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/legiz-ru/x-ui-pro/master/docker/install-standalone.sh | bash -s <domain> [reality_domain] [timezone]
+curl -sSL https://raw.githubusercontent.com/SemennikovNA/x-ui-pro/docker-compose/docker/install-standalone.sh | bash -s <domain> [reality_domain] [timezone]
 ```
 
 Пример:
 ```bash
-curl -sSL https://raw.githubusercontent.com/legiz-ru/x-ui-pro/master/docker/install-standalone.sh | bash -s adm.duckondigitalwave.space reality.duckondigitalwave.space Asia/Almaty
+curl -sSL https://raw.githubusercontent.com/SemennikovNA/x-ui-pro/docker-compose/docker/install-standalone.sh | bash -s adm.duckondigitalwave.space reality.duckondigitalwave.space Asia/Almaty
 ```
 
 Скрипт автоматически скачает все необходимые файлы и выполнит установку.
