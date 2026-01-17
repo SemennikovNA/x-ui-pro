@@ -31,6 +31,8 @@ TZ="${3:-Asia/Almaty}"
 WORK_DIR="$(pwd)/x-ui-pro-docker"
 REPO_URL="${XUI_PRO_REPO_URL:-https://github.com/SemennikovNA/x-ui-pro}"
 REPO_BRANCH="${XUI_PRO_REPO_BRANCH:-docker-compose}"
+# Используем raw.githubusercontent.com напрямую для надежности
+RAW_BASE_URL="https://raw.githubusercontent.com/SemennikovNA/x-ui-pro/${REPO_BRANCH}"
 
 # Проверка зависимостей
 msg_step "Проверка зависимостей..."
@@ -65,72 +67,136 @@ msg_step "Скачивание файлов конфигурации..."
 # Создаем структуру директорий
 mkdir -p docker/{xui-pro/scripts,scripts}
 
-# Скачиваем Dockerfile
-msg_inf "Скачивание Dockerfile..."
-curl -sSL "${REPO_URL}/raw/${REPO_BRANCH}/docker/xui-pro/Dockerfile" -o docker/xui-pro/Dockerfile || {
-    msg_err "Не удалось скачать Dockerfile. Проверьте доступность репозитория."
-    exit 1
+# Функция для безопасного скачивания файла с проверкой
+download_file() {
+    local url="$1"
+    local output="$2"
+    local name="$3"
+    
+    msg_inf "Скачивание $name..."
+    msg_inf "URL: $url"
+    
+    # Скачиваем файл во временный файл сначала
+    local temp_file="${output}.tmp"
+    
+    # Используем curl с явными параметрами для raw файлов
+    HTTP_CODE=$(curl -sSL -f -o "$temp_file" -w "%{http_code}" "$url" 2>&1)
+    CURL_EXIT=$?
+    
+    # Проверяем код выхода curl
+    if [ $CURL_EXIT -ne 0 ]; then
+        msg_err "Ошибка curl при скачивании $name (код: $CURL_EXIT)"
+        msg_inf "URL: $url"
+        rm -f "$temp_file"
+        return 1
+    fi
+    
+    # Проверяем HTTP код
+    if [ "$HTTP_CODE" != "200" ]; then
+        msg_err "Не удалось скачать $name (HTTP код: $HTTP_CODE)"
+        msg_inf "URL: $url"
+        if [ -f "$temp_file" ]; then
+            msg_inf "Содержимое ответа:"
+            head -n 10 "$temp_file"
+        fi
+        rm -f "$temp_file"
+        return 1
+    fi
+    
+    # Проверяем, что файл не пустой
+    if [ ! -s "$temp_file" ]; then
+        msg_err "Файл $name пустой!"
+        rm -f "$temp_file"
+        return 1
+    fi
+    
+    # Проверяем, что это не HTML страница ошибки
+    FIRST_LINE=$(head -n 1 "$temp_file" 2>/dev/null || echo "")
+    if echo "$FIRST_LINE" | grep -qE "<!DOCTYPE html>|<html|404|Not Found"; then
+        msg_err "Скачанный файл $name является HTML страницей, а не скриптом!"
+        msg_inf "Первая строка: $FIRST_LINE"
+        msg_inf "Первые 10 строк:"
+        head -n 10 "$temp_file"
+        rm -f "$temp_file"
+        return 1
+    fi
+    
+    # Если все проверки пройдены, перемещаем файл на место
+    mv "$temp_file" "$output"
+    
+    return 0
 }
+
+# Скачиваем Dockerfile
+if ! download_file "${RAW_BASE_URL}/docker/xui-pro/Dockerfile" "docker/xui-pro/Dockerfile" "Dockerfile"; then
+    exit 1
+fi
 
 # Скачиваем скрипты для xui-pro
 for script in entrypoint.sh install-xui.sh init-xui.sh install-extras.sh; do
-    msg_inf "Скачивание $script..."
-    curl -sSL "${REPO_URL}/raw/${REPO_BRANCH}/docker/xui-pro/scripts/${script}" -o "docker/xui-pro/scripts/${script}" || {
-        msg_err "Не удалось скачать ${script}"
+    if ! download_file "${RAW_BASE_URL}/docker/xui-pro/scripts/${script}" "docker/xui-pro/scripts/${script}" "$script"; then
         exit 1
-    }
+    fi
     chmod +x "docker/xui-pro/scripts/${script}"
 done
 
 # Скачиваем скрипты генерации
-msg_inf "Скачивание скриптов генерации..."
-curl -sSL "${REPO_URL}/raw/${REPO_BRANCH}/docker/scripts/generate-nginx-configs.sh" -o docker/scripts/generate-nginx-configs.sh || {
-    msg_err "Не удалось скачать generate-nginx-configs.sh"
+if ! download_file "${RAW_BASE_URL}/docker/scripts/generate-nginx-configs.sh" "docker/scripts/generate-nginx-configs.sh" "generate-nginx-configs.sh"; then
     exit 1
-}
+fi
 chmod +x docker/scripts/generate-nginx-configs.sh
 
 # Скачиваем скрипт генерации docker-compose
-msg_inf "Скачивание generate-docker-compose.sh..."
-GEN_COMPOSE_URL="${REPO_URL}/raw/${REPO_BRANCH}/docker/generate-docker-compose.sh"
-msg_inf "URL: $GEN_COMPOSE_URL"
-if ! curl -sSL "$GEN_COMPOSE_URL" -o docker/generate-docker-compose.sh; then
-    msg_err "Не удалось скачать generate-docker-compose.sh"
-    msg_inf "Проверьте доступность URL: $GEN_COMPOSE_URL"
+if ! download_file "${RAW_BASE_URL}/docker/generate-docker-compose.sh" "docker/generate-docker-compose.sh" "generate-docker-compose.sh"; then
     exit 1
 fi
 
-# Проверяем, что файл действительно bash скрипт, а не HTML
+# Дополнительная проверка для bash скрипта
 if ! head -n 1 docker/generate-docker-compose.sh | grep -q "#!/bin/bash"; then
-    msg_err "Скачанный файл не является bash скриптом. Возможно, неправильный путь в репозитории."
-    msg_inf "Первые строки скачанного файла:"
-    head -n 10 docker/generate-docker-compose.sh
-    msg_inf "Проверьте, что файл существует по пути: docker/generate-docker-compose.sh в ветке ${REPO_BRANCH}"
+    msg_err "Файл generate-docker-compose.sh не является bash скриптом!"
+    msg_inf "Первая строка: $(head -n 1 docker/generate-docker-compose.sh)"
     exit 1
 fi
 
 chmod +x docker/generate-docker-compose.sh
+msg_ok "generate-docker-compose.sh скачан и проверен"
 
 msg_ok "Файлы скачаны"
+
+# Финальная проверка всех скачанных файлов
+msg_step "Проверка скачанных файлов..."
+for file in docker/xui-pro/Dockerfile docker/xui-pro/scripts/entrypoint.sh docker/xui-pro/scripts/install-xui.sh docker/xui-pro/scripts/init-xui.sh docker/xui-pro/scripts/install-extras.sh docker/scripts/generate-nginx-configs.sh docker/generate-docker-compose.sh; do
+    if [ ! -f "$file" ]; then
+        msg_err "Файл $file не найден!"
+        exit 1
+    fi
+    if [ ! -s "$file" ]; then
+        msg_err "Файл $file пустой!"
+        exit 1
+    fi
+done
+
+# Проверяем, что generate-docker-compose.sh действительно bash скрипт
+if ! head -n 1 docker/generate-docker-compose.sh | grep -q "#!/bin/bash"; then
+    msg_err "Файл docker/generate-docker-compose.sh не является bash скриптом!"
+    msg_inf "Первые строки:"
+    head -n 5 docker/generate-docker-compose.sh
+    exit 1
+fi
+
+msg_ok "Все файлы проверены"
 
 # Генерируем конфигурацию
 msg_step "Генерация Docker Compose конфигурации..."
 export OUTPUT_DIR="."
 export TZ
 
-# Проверяем наличие скрипта перед запуском
-if [ ! -f "docker/generate-docker-compose.sh" ]; then
-    msg_err "Файл docker/generate-docker-compose.sh не найден"
-    exit 1
-fi
-
 # Проверяем, что мы в правильной директории
 msg_inf "Текущая директория: $(pwd)"
-msg_inf "Содержимое docker/:"
-ls -la docker/ || true
 
 if ! bash docker/generate-docker-compose.sh "$DOMAIN" "$REALITY_DOMAIN" "$TZ"; then
     msg_err "Ошибка при генерации конфигурации"
+    msg_inf "Проверьте логи выше для деталей"
     exit 1
 fi
 
